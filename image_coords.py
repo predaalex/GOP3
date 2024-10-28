@@ -1,19 +1,15 @@
 import cv2
-
+import cv_functions
 
 # Callback function to handle mouse events
 def click_event(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
         # Print the coordinates
-        coords.append(f"({x}, {y}), ")
+        coords.append((x, y))
+
         if len(coords) == 2:
-            output = ""
-            for coord in coords:
-                output += coord
-            print(output[:-2])
-        elif len(coords) >= 3:
+            print(coords)
             coords.clear()
-            coords.append(f"({x}, {y}),")
 
         # Draw a small circle at the clicked point (for visual feedback)
         cv2.circle(image, (x, y), 5, (255, 0, 0), -1)
