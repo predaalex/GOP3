@@ -31,9 +31,9 @@ def extract_image(image, coords):
 
 
 def calculate_matchTemplate_similarity(image, template_img):
-    result = cv.matchTemplate(template_img, image, cv.TM_CCOEFF_NORMED)
-    similarity_score = result[0][0]
-    return similarity_score
+    result = cv.matchTemplate(image, template_img, cv.TM_CCOEFF_NORMED)
+    min_val, max_val, min_loc, max_loc = cv.minMaxLoc(result)
+    return max_val
 
 
 def calculate_sift_similarity(image1, image2):
@@ -80,19 +80,14 @@ def calculate_sift_similarity(image1, image2):
 
 
 def classify_card(image, position, algorithm="SIFT"):
-    cards_root_path = "./cards - Copy/"
+    cards_root_path = "./cards/"
     cards_path = cards_root_path + position
-    # image = cv.resize(image, (0, 0), fx=1.1, fy=1.1)
-    # cv.imshow("card", image)
-    # cv.imwrite("resources/card.png", image)
-
     template_img_paths = os.listdir(cards_path)
     best_score = 0
     best_card = ""
 
     for template_img_path in template_img_paths:
         template_img = cv.imread(cards_path + template_img_path, cv.IMREAD_GRAYSCALE)
-        # template_img = cv.resize(template_img, (0, 0), fx=1.1, fy=1.1)
 
         if algorithm == "SIFT":
             similarity_score = calculate_sift_similarity(template_img, image)
@@ -111,57 +106,51 @@ def classify_card(image, position, algorithm="SIFT"):
     return best_card, best_score
 
 
+def get_card_value_or_rank(image, position, value_or_rank):
+
+    if "left" in position:
+        cards_dir = "./cards_v2/left/"
+    elif "right" in position:
+        cards_dir = "./cards_v2/right/"
+    else:  # flop # TODO: make flop as well
+        return None
+
+    cards_dir += value_or_rank
+    template_img_paths = os.listdir(cards_dir)
+
+    best_score = 0
+    best_card = ""
+    for template_img_path in template_img_paths:
+
+        template_img = cv.imread(cards_dir + template_img_path, cv.IMREAD_GRAYSCALE)
+
+        similarity_score = calculate_matchTemplate_similarity(image, template_img)
+
+        if similarity_score > best_score:
+            best_card = template_img_path.split(".")[0]
+            best_score = similarity_score
+            best_img = template_img
+
+    cv.imshow("best_match", best_img)
+    cv.imshow("original_img", image)
+    cv.waitKey(0)
+    return best_card
+
+
+def classify_card_v2(image, position):
+    # two steps: 1. get value | 2. get rank
+
+    # 1. get value
+    value = get_card_value_or_rank(image, position, "value/")
+    key = get_card_value_or_rank(image, position, "rank/")
+
+    return value, key
+
 if __name__ == '__main__':
     # game_window = pygetwindow.getWindowsWithTitle('GOP3')[1]
     # game_image = get_image(game_window)
     # cv.imshow('GOP3', game_image)
     # cv.imwrite("resources/second.png", game_image)
-
-    # img = cv.imread("resources/second.png")
-    # game_image = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    #
-    # left_card = extract_image(game_image, left_card_coords)
-    # right_card = extract_image(game_image, right_card_coords)
-    # flop1_card = extract_image(game_image, flop1)
-    # flop2_card = extract_image(game_image, flop2)
-    # flop3_card = extract_image(game_image, flop3)
-    # turn_card = extract_image(game_image, turn)
-    # river_card = extract_image(game_image, river)
-    #
-    # cv.imshow("left", left_card)
-    # print(classify_card(left_card, "left/"))
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
-    #
-    # cv.imshow("right", right_card)
-    # print(classify_card(right_card, "right/"))
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
-    #
-    # cv.imshow("flop1", flop1_card)
-    # print(classify_card(flop1_card, "river/"))
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
-    #
-    # cv.imshow("flop2", flop2_card)
-    # print(classify_card(flop2_card, "river/"))
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
-    #
-    # cv.imshow("flop3", flop3_card)
-    # print(classify_card(flop3_card, "river/"))
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
-    #
-    # cv.imshow("turn", turn_card)
-    # print(classify_card(turn_card, "river/"))
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
-    #
-    # cv.imshow("river", river_card)
-    # print(classify_card(river_card, "river/"))
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
 
     dir_path = './cards/right/'
     test_images = os.listdir(dir_path)
@@ -169,5 +158,6 @@ if __name__ == '__main__':
     test_images = [cv.imread(dir_path + path, cv.IMREAD_GRAYSCALE) for path in test_images]
 
     for image in test_images:
-        print(classify_card(image, position="right/", algorithm="SIFT"))
+        # print(classify_card(image, position="right/", algorithm="matchTemplate"))
+        print(classify_card_v2(image, position="right"))
 
