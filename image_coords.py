@@ -6,12 +6,12 @@ def click_event(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
         # Print the coordinates
         coords.append(f"({x}, {y}), ")
-        if len(coords) == 4:
+        if len(coords) == 2:
             output = ""
             for coord in coords:
                 output += coord
             print(output[:-2])
-        elif len(coords) >= 5:
+        elif len(coords) >= 3:
             coords.clear()
             coords.append(f"({x}, {y}),")
 
@@ -27,7 +27,7 @@ def click_event(event, x, y, flags, param):
 
 
 # Read the image
-image_path = 'resources/first.png'
+image_path = 'resources/second.png'
 image = cv2.imread(image_path)
 coords = []
 
