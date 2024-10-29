@@ -57,7 +57,7 @@ def monte_carlo(hand, table, players=2, samples=50000):
     """
 
     result = [0, 0, 0]
-
+    table = [card for card in table if card is not '']
     for i in range(samples):
         outcome = simulate(hand, table, players)
         result[outcome] += 1
@@ -65,4 +65,4 @@ def monte_carlo(hand, table, players=2, samples=50000):
 
 
 if __name__ == '__main__':
-    print(monte_carlo(['8h', '5d'], []))
+    print(monte_carlo(['Qh', '5d'], []))
