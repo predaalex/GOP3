@@ -1,22 +1,29 @@
 import cv2 as cv
 import numpy as np
-import pydirectinput
 import pygetwindow
 from PIL import ImageGrab
 import os
 import pytesseract
+import simulation
 
 
-left_card_coords = [(742, 560), (818, 649)]  # right top | left bottom
-right_card_coords = [(817, 556), (876, 649)]  # left top | right bottom
+left_card_coords = [(742, 560), (818, 649)]
+right_card_coords = [(817, 556), (876, 649)]
 flop1_coords = [(610, 357), (681, 455)]
 flop2_coords = [(692, 358), (765, 454)]
 flop3_coords = [(776, 358), (846, 454)]
 turn_coords = [(859, 359), (929, 455)]
 river_coords = [(941, 360), (1012, 454)]
 pot_coords = [(672, 281), (949, 350)]
+opponents_cards_coords = [
+    [(470, 260), (560, 380)],
+    [(1060, 260), (1160, 390)],
+    [(1030, 500), (1130, 610)],
+    [(490, 500), (590, 610)],
+]
 
 pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+counter = 0
 
 
 def convert_string_to_int(number_string):
@@ -27,18 +34,25 @@ def convert_string_to_int(number_string):
     :param number_string:
     :return:
     """
-    # Check if the number contains 'M' (indicating millions)
-    if 'M' in number_string:
-        # Remove 'M' and convert to float, then multiply by 1 million
-        converted_number = int(float(number_string.replace('M', '')) * 1_000_000)
-    elif 'B' in number_string:
-        # Remove 'B' and convert to float, then multiply by 1 billion
-        converted_number = int(float(number_string.replace('B', '')) * 1_000_000_000)
-    else:
-        # Convert directly to integer if no 'M' is present
-        converted_number = int(number_string.replace(",", ""))
+    global counter
+    try:
 
-    return converted_number
+        # Check if the number contains 'M' (indicating millions)
+        if 'M' in number_string:
+            # Remove 'M' and convert to float, then multiply by 1 million
+            converted_number = int(float(number_string.replace('M', '')) * 1_000_000)
+        elif 'B' in number_string:
+            # Remove 'B' and convert to float, then multiply by 1 billion
+            converted_number = int(float(number_string.replace('B', '')) * 1_000_000_000)
+        else:
+            # Convert directly to integer if no 'M' is present
+            converted_number = int(number_string.replace(",", ""))
+
+        return converted_number
+    except Exception as e:
+        cv.imwrite(f"resources/errors{1}-{number_string}.png", game_image)
+        counter += 1
+        return
 
 
 def get_pot_value(image):
@@ -63,8 +77,9 @@ def get_pot_value(image):
 
     # text to int
 
+    pot_value = convert_string_to_int(text)
 
-    return text
+    return pot_value
 
 
 def get_image(window):
@@ -176,8 +191,8 @@ def get_card_value_or_rank(image, position, value_or_rank):
         cards_dir = "./cards_v2/left/"
     elif "right" in position:
         cards_dir = "./cards_v2/right/"
-    else:  # flop # TODO: make flop as well
-        return None
+    elif "flop" in position:
+        cards_dir = "./cards_v2/flop/"
 
     cards_dir += value_or_rank
     template_img_paths = os.listdir(cards_dir)
@@ -195,41 +210,94 @@ def get_card_value_or_rank(image, position, value_or_rank):
             best_score = similarity_score
             best_img = template_img
 
-    # cv.imshow("best_match", best_img)
-    # cv.imshow("original_img", image)
-    # cv.waitKey(0)
-    return best_card
+    if best_score > 0.80:
+        return best_card
+    else:
+        return None
 
 
 def classify_card_v2(image, position):
+    """
+    Returns the classified card from a certain position based on its similarity score.
+    :param image:
+    :param position:
+    :return:
+    """
     # two steps: 1. get value | 2. get rank
 
     # 1. get value
     value = get_card_value_or_rank(image, position, "value/")
     key = get_card_value_or_rank(image, position, "rank/")
 
+    if key is None or value is None:
+        return None
+
     return value, key
+
+
+def get_number_of_players(image):
+    """
+    Returns the number of players still playing the game.
+    :param image:
+    :return:
+    """
+    players_number = 0
+
+    for coords in opponents_cards_coords:
+        possible_cards_image = extract_image(image, coords)
+        for img_path in os.listdir("./player_detection_imgs"):
+            template = cv.imread("./player_detection_imgs/" + img_path, cv.IMREAD_GRAYSCALE)
+            similarity_score = calculate_matchTemplate_similarity(template, possible_cards_image)
+            if similarity_score > 0.80:
+                players_number += 1
+                break
+    return players_number
 
 
 if __name__ == '__main__':
     game_window = pygetwindow.getWindowsWithTitle('GOP3')[1]
+
     while True:
 
         game_image = get_image(game_window)
         cv.imshow('GOP3', game_image)
+        left_card_image = extract_image(game_image, left_card_coords)
+        right_card_image = extract_image(game_image, right_card_coords)
+        flop1_card_image = extract_image(game_image, flop1_coords)
+        flop2_card_image = extract_image(game_image, flop2_coords)
+        flop3_card_image = extract_image(game_image, flop3_coords)
+        turn_card_image = extract_image(game_image, turn_coords)
+        river_card_image = extract_image(game_image, river_coords)
+        # TODO: river card is not classified
+
 
         key = cv.waitKey(1) & 0xFF
 
         if key == 32:
-            print(get_pot_value(game_image))
+            cv.imshow("river card", river_card_image)
+            players_number = get_number_of_players(game_image)
+            print(f"Number of players: {players_number}")
+            print(f"Pot value: {get_pot_value(game_image)}")
+            # Use an empty list if classify_card_v2 returns None
+            left_hand = "".join(card for card in (classify_card_v2(left_card_image, 'left') or []) if card is not None)
+            right_hand = "".join(
+                card for card in (classify_card_v2(right_card_image, 'right') or []) if card is not None)
 
-    #
-    # dir_path = './cards/right/'
-    # test_images = os.listdir(dir_path)
-    #
-    # test_images = [cv.imread(dir_path + path, cv.IMREAD_GRAYSCALE) for path in test_images]
-    #
-    # for image in test_images:
-    #     # print(classify_card(image, position="right/", algorithm="matchTemplate"))
-    #     print(classify_card_v2(image, position="right"))
+            flop1_card = "".join(
+                card for card in (classify_card_v2(flop1_card_image, 'flop') or []) if card is not None)
+            flop2_card = "".join(
+                card for card in (classify_card_v2(flop2_card_image, 'flop') or []) if card is not None)
+            flop3_card = "".join(
+                card for card in (classify_card_v2(flop3_card_image, 'flop') or []) if card is not None)
+            turn_card = "".join(card for card in (classify_card_v2(turn_card_image, 'flop') or []) if card is not None)
+            river_card = "".join(
+                card for card in (classify_card_v2(river_card_image, 'flop') or []) if card is not None)
 
+            print(f"Player Cards: {left_hand}{right_hand}")
+            print(f"Flop1 cards: {flop1_card}")
+            print(f"Flop2 cards: {flop2_card}")
+            print(f"Flop3 cards: {flop3_card}")
+            print(f"Turn cards: {turn_card}")
+            print(f"River cards: {river_card}")
+            print(f"Simulation scores: {simulation.monte_carlo([left_hand, right_hand], [flop1_card, flop2_card, flop3_card, turn_card, river_card], players_number)}")
+            print(f"------------------------")
