@@ -15,6 +15,9 @@ river = [(941, 360), (1012, 454)]
 
 
 def get_image(window):
+    """
+    Return the image inside bbox of window as cv gray image
+    """
     x, y, width, height = window.left, window.top, window.width, window.height
     screenshot = ImageGrab.grab(bbox=(x, y, x + width, y + height))
     screenshot = np.array(screenshot)
@@ -25,12 +28,15 @@ def get_image(window):
 
 def extract_image(image, coords):
     """
-    Extract images based on coordinates. (x1, y1) (x2, y2) Top left, Right bottom
+    Extract cropped image based on coordinates. (x1, y1) (x2, y2) Top left, Right bottom
     """
     return image[coords[0][1]:coords[1][1], coords[0][0]:coords[1][0]]
 
 
 def calculate_matchTemplate_similarity(image, template_img):
+    """
+    Calculates the similarity between the template image and the image
+    """
     result = cv.matchTemplate(image, template_img, cv.TM_CCOEFF_NORMED)
     min_val, max_val, min_loc, max_loc = cv.minMaxLoc(result)
     return max_val
@@ -80,6 +86,9 @@ def calculate_sift_similarity(image1, image2):
 
 
 def classify_card(image, position, algorithm="SIFT"):
+    """
+    Using SIFT or matchTemplate, classify the card based on its similarity score.
+    """
     cards_root_path = "./cards/"
     cards_path = cards_root_path + position
     template_img_paths = os.listdir(cards_path)
@@ -107,7 +116,9 @@ def classify_card(image, position, algorithm="SIFT"):
 
 
 def get_card_value_or_rank(image, position, value_or_rank):
-
+    """
+    Classify the card rank or value based on its similarity score.
+    """
     if "left" in position:
         cards_dir = "./cards_v2/left/"
     elif "right" in position:
@@ -131,9 +142,9 @@ def get_card_value_or_rank(image, position, value_or_rank):
             best_score = similarity_score
             best_img = template_img
 
-    cv.imshow("best_match", best_img)
-    cv.imshow("original_img", image)
-    cv.waitKey(0)
+    # cv.imshow("best_match", best_img)
+    # cv.imshow("original_img", image)
+    # cv.waitKey(0)
     return best_card
 
 
@@ -145,6 +156,7 @@ def classify_card_v2(image, position):
     key = get_card_value_or_rank(image, position, "rank/")
 
     return value, key
+
 
 if __name__ == '__main__':
     # game_window = pygetwindow.getWindowsWithTitle('GOP3')[1]
