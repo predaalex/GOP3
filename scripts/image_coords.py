@@ -23,7 +23,7 @@ def click_event(event, x, y, flags, param):
 
 
 # Read the image
-image_path = 'resources/second.png'
+image_path = '../resources/full_table.png'
 image = cv2.imread(image_path)
 coords = []
 
