@@ -23,11 +23,11 @@ while True:
         # Get each possible card
         left_card = cv_functions.extract_image(game_image, cv_functions.left_card_coords)
         right_card = cv_functions.extract_image(game_image, cv_functions.right_card_coords)
-        flop1_card = cv_functions.extract_image(game_image, cv_functions.flop1)
-        flop2_card = cv_functions.extract_image(game_image, cv_functions.flop2)
-        flop3_card = cv_functions.extract_image(game_image, cv_functions.flop3)
-        turn_card = cv_functions.extract_image(game_image, cv_functions.turn)
-        river_card = cv_functions.extract_image(game_image, cv_functions.river)
+        flop1_card = cv_functions.extract_image(game_image, cv_functions.flop1_coords)
+        flop2_card = cv_functions.extract_image(game_image, cv_functions.flop2_coords)
+        flop3_card = cv_functions.extract_image(game_image, cv_functions.flop3_coords)
+        turn_card = cv_functions.extract_image(game_image, cv_functions.turn_coords)
+        river_card = cv_functions.extract_image(game_image, cv_functions.river_coords)
 
         # Position left, right, or flop (l, r, or f)
         print("Press l, r, or f for position left, right, or flop")
