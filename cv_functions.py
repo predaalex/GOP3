@@ -4,14 +4,67 @@ import pydirectinput
 import pygetwindow
 from PIL import ImageGrab
 import os
+import pytesseract
+
 
 left_card_coords = [(742, 560), (818, 649)]  # right top | left bottom
 right_card_coords = [(817, 556), (876, 649)]  # left top | right bottom
-flop1 = [(610, 357), (681, 455)]
-flop2 = [(692, 358), (765, 454)]
-flop3 = [(776, 358), (846, 454)]
-turn = [(859, 359), (929, 455)]
-river = [(941, 360), (1012, 454)]
+flop1_coords = [(610, 357), (681, 455)]
+flop2_coords = [(692, 358), (765, 454)]
+flop3_coords = [(776, 358), (846, 454)]
+turn_coords = [(859, 359), (929, 455)]
+river_coords = [(941, 360), (1012, 454)]
+pot_coords = [(672, 281), (949, 350)]
+
+pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+
+
+def convert_string_to_int(number_string):
+    """
+    Convert String number from pot to integer
+    example: ["40000", "80000", "100000", "120000", "100000", "20.15M", "21.1M", "21.1M", "175000", "18.742999M", "19.717999M"]
+    converted: [40000, 80000, 100000, 120000, 100000, 20150000, 21100000, 21100000, 175000, 18742999, 19717999]
+    :param number_string:
+    :return:
+    """
+    # Check if the number contains 'M' (indicating millions)
+    if 'M' in number_string:
+        # Remove 'M' and convert to float, then multiply by 1 million
+        converted_number = int(float(number_string.replace('M', '')) * 1_000_000)
+    elif 'B' in number_string:
+        # Remove 'B' and convert to float, then multiply by 1 billion
+        converted_number = int(float(number_string.replace('B', '')) * 1_000_000_000)
+    else:
+        # Convert directly to integer if no 'M' is present
+        converted_number = int(number_string.replace(",", ""))
+
+    return converted_number
+
+
+def get_pot_value(image):
+    """
+    Returns the current pot value
+    """
+    # get pot image
+    pot_image = extract_image(image, pot_coords)
+
+    # Apply a binary inverse threshold to make the text stand out
+    _, thresh_img = cv.threshold(pot_image, 230, 255, cv.THRESH_BINARY_INV)
+
+    # Use Gaussian blur to smooth the edges (reduce sharpness of the characters)
+    blurred_img = cv.GaussianBlur(thresh_img, (3, 3), 0)
+
+    # Apply morphological operations to make characters more distinct
+    kernel = cv.getStructuringElement(cv.MORPH_RECT, (2, 2))
+    processed_img = cv.morphologyEx(blurred_img, cv.MORPH_CLOSE, kernel)
+
+    # OCR on processed image
+    text = pytesseract.image_to_string(processed_img)
+
+    # text to int
+
+
+    return text
 
 
 def get_image(window):
@@ -159,17 +212,24 @@ def classify_card_v2(image, position):
 
 
 if __name__ == '__main__':
-    # game_window = pygetwindow.getWindowsWithTitle('GOP3')[1]
-    # game_image = get_image(game_window)
-    # cv.imshow('GOP3', game_image)
-    # cv.imwrite("resources/second.png", game_image)
+    game_window = pygetwindow.getWindowsWithTitle('GOP3')[1]
+    while True:
 
-    dir_path = './cards/right/'
-    test_images = os.listdir(dir_path)
+        game_image = get_image(game_window)
+        cv.imshow('GOP3', game_image)
 
-    test_images = [cv.imread(dir_path + path, cv.IMREAD_GRAYSCALE) for path in test_images]
+        key = cv.waitKey(1) & 0xFF
 
-    for image in test_images:
-        # print(classify_card(image, position="right/", algorithm="matchTemplate"))
-        print(classify_card_v2(image, position="right"))
+        if key == 32:
+            print(get_pot_value(game_image))
+
+    #
+    # dir_path = './cards/right/'
+    # test_images = os.listdir(dir_path)
+    #
+    # test_images = [cv.imread(dir_path + path, cv.IMREAD_GRAYSCALE) for path in test_images]
+    #
+    # for image in test_images:
+    #     # print(classify_card(image, position="right/", algorithm="matchTemplate"))
+    #     print(classify_card_v2(image, position="right"))
 
