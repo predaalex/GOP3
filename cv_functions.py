@@ -21,6 +21,7 @@ opponents_cards_coords = [
     [(1030, 500), (1130, 610)],
     [(490, 500), (590, 610)],
 ]
+call_button_coords = [(766, 847), (1100, 915)]
 
 pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
 counter = 0
@@ -55,31 +56,54 @@ def convert_string_to_int(number_string):
         return
 
 
+def image_to_text(image, thresh_function=cv.THRESH_BINARY_INV):
+    # Apply a binary inverse threshold to make the text stand out
+    _, thresh_img = cv.threshold(image, 230, 255, thresh_function)
+    # Use Gaussian blur to smooth the edges (reduce sharpness of the characters)
+    blurred_img = cv.GaussianBlur(thresh_img, (3, 3), 0)
+    # Apply morphological operations to make characters more distinct
+    kernel = cv.getStructuringElement(cv.MORPH_RECT, (2, 2))
+    processed_img = cv.morphologyEx(blurred_img, cv.MORPH_CLOSE, kernel)
+    # OCR on processed image
+    text = pytesseract.image_to_string(processed_img)
+    return text
+
+
 def get_pot_value(image):
     """
     Returns the current pot value
     """
     # get pot image
     pot_image = extract_image(image, pot_coords)
-
-    # Apply a binary inverse threshold to make the text stand out
-    _, thresh_img = cv.threshold(pot_image, 230, 255, cv.THRESH_BINARY_INV)
-
-    # Use Gaussian blur to smooth the edges (reduce sharpness of the characters)
-    blurred_img = cv.GaussianBlur(thresh_img, (3, 3), 0)
-
-    # Apply morphological operations to make characters more distinct
-    kernel = cv.getStructuringElement(cv.MORPH_RECT, (2, 2))
-    processed_img = cv.morphologyEx(blurred_img, cv.MORPH_CLOSE, kernel)
-
-    # OCR on processed image
-    text = pytesseract.image_to_string(processed_img)
+    text = image_to_text(pot_image, cv.THRESH_BINARY_INV)
 
     # text to int
-
     pot_value = convert_string_to_int(text)
 
     return pot_value
+
+
+def get_call_value(image):
+    """
+    Returns the current call value
+    :return: Call Value(Int) | CHECK | ALL IN
+    """
+    # get call image
+    call_image = extract_image(image, call_button_coords)
+    text = image_to_text(call_image, cv.THRESH_BINARY_INV)
+
+    # print(text)  # debug call value
+    if "CALL ANY" in text:
+        return 0
+    elif "CHECK" in text:
+        return 0
+    elif "ALL IN" in text:
+        return 1000000  # TODO: GET ALL IN VALUE
+    else:
+        try:
+            return convert_string_to_int(text.split(" ")[1])
+        except Exception as e:
+            return 0
 
 
 def get_image(window):
@@ -210,7 +234,7 @@ def get_card_value_or_rank(image, position, value_or_rank):
             best_score = similarity_score
             best_img = template_img
 
-    if best_score > 0.80:
+    if best_score > 0.5:
         return best_card
     else:
         return None
@@ -248,10 +272,20 @@ def get_number_of_players(image):
         for img_path in os.listdir("./player_detection_imgs"):
             template = cv.imread("./player_detection_imgs/" + img_path, cv.IMREAD_GRAYSCALE)
             similarity_score = calculate_matchTemplate_similarity(template, possible_cards_image)
-            if similarity_score > 0.80:
+            if similarity_score > 0.60:
                 players_number += 1
                 break
     return players_number
+
+
+def compute_ev(pot_value, call_value, win_prob, lose_prob):
+    """
+    (probabilitatea de a castiga * cat castigi)
+    """
+    if None in (pot_value, call_value, win_prob, lose_prob):
+        return None
+
+    return (win_prob * pot_value) - (lose_prob * call_value)
 
 
 if __name__ == '__main__':
@@ -268,36 +302,35 @@ if __name__ == '__main__':
         flop3_card_image = extract_image(game_image, flop3_coords)
         turn_card_image = extract_image(game_image, turn_coords)
         river_card_image = extract_image(game_image, river_coords)
-        # TODO: river card is not classified
 
-
-        key = cv.waitKey(1) & 0xFF
+        key = cv.waitKey(10) & 0xFF
 
         if key == 32:
-            cv.imshow("river card", river_card_image)
             players_number = get_number_of_players(game_image)
             print(f"Number of players: {players_number}")
-            print(f"Pot value: {get_pot_value(game_image)}")
-            # Use an empty list if classify_card_v2 returns None
+
             left_hand = "".join(card for card in (classify_card_v2(left_card_image, 'left') or []) if card is not None)
-            right_hand = "".join(
-                card for card in (classify_card_v2(right_card_image, 'right') or []) if card is not None)
-
-            flop1_card = "".join(
-                card for card in (classify_card_v2(flop1_card_image, 'flop') or []) if card is not None)
-            flop2_card = "".join(
-                card for card in (classify_card_v2(flop2_card_image, 'flop') or []) if card is not None)
-            flop3_card = "".join(
-                card for card in (classify_card_v2(flop3_card_image, 'flop') or []) if card is not None)
+            right_hand = "".join(card for card in (classify_card_v2(right_card_image, 'right') or []) if card is not None)
+            flop1_card = "".join(card for card in (classify_card_v2(flop1_card_image, 'flop') or []) if card is not None)
+            flop2_card = "".join(card for card in (classify_card_v2(flop2_card_image, 'flop') or []) if card is not None)
+            flop3_card = "".join(card for card in (classify_card_v2(flop3_card_image, 'flop') or []) if card is not None)
             turn_card = "".join(card for card in (classify_card_v2(turn_card_image, 'flop') or []) if card is not None)
-            river_card = "".join(
-                card for card in (classify_card_v2(river_card_image, 'flop') or []) if card is not None)
-
+            river_card = "".join(card for card in (classify_card_v2(river_card_image, 'flop') or []) if card is not None)
             print(f"Player Cards: {left_hand}{right_hand}")
             print(f"Flop1 cards: {flop1_card}")
             print(f"Flop2 cards: {flop2_card}")
             print(f"Flop3 cards: {flop3_card}")
             print(f"Turn cards: {turn_card}")
             print(f"River cards: {river_card}")
-            print(f"Simulation scores: {simulation.monte_carlo([left_hand, right_hand], [flop1_card, flop2_card, flop3_card, turn_card, river_card], players_number)}")
+
+            win_prob, lose_prob, tie_prob = simulation.monte_carlo([left_hand, right_hand], [flop1_card, flop2_card, flop3_card, turn_card, river_card], players_number, samples=50000)
+            print(f"Simulation scores: {[win_prob, lose_prob, tie_prob]}")
+
+            pot_value = get_pot_value(game_image)
+            print(f"Pot value: {pot_value}")
+            call_value = get_call_value(game_image)
+            print(f"Call Value: {call_value}")
+
+            expected_value = compute_ev(pot_value, call_value, win_prob, lose_prob)
+            print(f"Expected value:{expected_value:.1f}")
             print(f"------------------------")
