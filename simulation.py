@@ -33,20 +33,23 @@ def simulate(hand, table, players):
         full.append(card)
     my_hand_rank = evaluate_cards(full[0], full[1], full[2], full[3], full[4], full[5], full[6])
 
+    best_opponent_hand = 100000
     for check_hand in hands:
         all_cards = table + check_hand
-        opponent = evaluate_cards(all_cards[0], all_cards[1], all_cards[2], all_cards[3], all_cards[4], all_cards[5],
-                                  all_cards[6])
-        # from the definition of the library we use for hand evaluation, larger evaluations correspond to less strong hands
-        # so, the game is won by the player with the smallest hand evaluation
-        if opponent < my_hand_rank:
-            return 1  # 'LOSE'
-        if opponent == my_hand_rank:
-            return 2  # 'SPLIT'
-        return 0  # 'WIN'
+        curr_opponent = evaluate_cards(all_cards[0], all_cards[1], all_cards[2], all_cards[3], all_cards[4], all_cards[5], all_cards[6])
+        if curr_opponent < best_opponent_hand:
+            best_opponent_hand = curr_opponent
+
+    # from the definition of the library we use for hand evaluation, larger evaluations correspond to less strong hands
+    # so, the game is won by the player with the smallest hand evaluation
+    if best_opponent_hand < my_hand_rank:
+        return 1  # 'LOSE'
+    if best_opponent_hand == my_hand_rank:
+        return 2  # 'SPLIT'
+    return 0  # 'WIN'
 
 
-def monte_carlo(hand, table, players=2, samples=50000):
+def monte_carlo(hand, table, players=2, samples=100000):
     """
     Monte Carlo simulation
     :param hand: player cards
@@ -55,14 +58,16 @@ def monte_carlo(hand, table, players=2, samples=50000):
     :param samples: number of simulations
     :return: percentages of win | lose | tie
     """
-
     result = [0, 0, 0]
-    table = [card for card in table if card is not '']
+    table = [card for card in table if card != '']
     for i in range(samples):
         outcome = simulate(hand, table, players)
-        result[outcome] += 1
+        try:
+            result[outcome] += 1
+        except Exception as e:
+            print(outcome)
     return list(map(lambda x: x / samples, result))
 
 
 if __name__ == '__main__':
-    print(monte_carlo(['Qh', '5d'], []))
+    print(monte_carlo(['Ad', 'Qc'], []))
