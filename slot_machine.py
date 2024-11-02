@@ -7,6 +7,7 @@ import pydirectinput
 button_coords = [(691, 710), (935, 809)]
 click_button_coords = [(691 + 935) // 2, (710 + 809) // 2]
 click_spin_coords = [1333, 861]
+game_size = [1624, 942]
 
 collect_img = cv_functions.extract_image(cv.imread(r"resources/slot_machine_collect.png", cv.IMREAD_GRAYSCALE), button_coords)
 continue_img = cv_functions.extract_image(cv.imread(r"resources/slot_machine_continue.png", cv.IMREAD_GRAYSCALE), button_coords)
@@ -35,7 +36,8 @@ def check_buttons(game_img, threshold=0.9):
 
 if __name__ == '__main__':
     counter = 0
-
+    print(f"current game window size = {game_window.size}")
+    game_window.resizeTo(game_size[0], game_size[1])
 
     while True:
         curr_game_img = cv_functions.get_image(game_window)
