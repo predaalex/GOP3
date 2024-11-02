@@ -22,7 +22,7 @@ opponents_cards_coords = [
     [(490, 500), (590, 610)],
 ]
 call_button_coords = [(766, 847), (1100, 915)]
-
+my_money_coords = [(919, 727), (1030, 765)]
 pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
 counter = 0
 
@@ -56,9 +56,9 @@ def convert_string_to_int(number_string):
         return
 
 
-def image_to_text(image, thresh_function=cv.THRESH_BINARY_INV):
+def image_to_text(image, min_val=230, max_val=250, thresh_function=cv.THRESH_BINARY_INV):
     # Apply a binary inverse threshold to make the text stand out
-    _, thresh_img = cv.threshold(image, 230, 255, thresh_function)
+    _, thresh_img = cv.threshold(image, min_val, max_val, thresh_function)
     # Use Gaussian blur to smooth the edges (reduce sharpness of the characters)
     blurred_img = cv.GaussianBlur(thresh_img, (3, 3), 0)
     # Apply morphological operations to make characters more distinct
@@ -75,12 +75,19 @@ def get_pot_value(image):
     """
     # get pot image
     pot_image = extract_image(image, pot_coords)
-    text = image_to_text(pot_image, cv.THRESH_BINARY_INV)
+    text = image_to_text(pot_image, thresh_function=cv.THRESH_BINARY_INV)
 
     # text to int
     pot_value = convert_string_to_int(text)
 
     return pot_value
+
+
+def get_my_money(image):
+    my_money_img = extract_image(image, my_money_coords)
+    text = image_to_text(my_money_img, thresh_function=cv.THRESH_BINARY_INV)
+    my_money = convert_string_to_int(text)
+    return my_money
 
 
 def get_call_value(image):
@@ -90,7 +97,7 @@ def get_call_value(image):
     """
     # get call image
     call_image = extract_image(image, call_button_coords)
-    text = image_to_text(call_image, cv.THRESH_BINARY_INV)
+    text = image_to_text(call_image, thresh_function=cv.THRESH_BINARY_INV)
 
     # print(text)  # debug call value
     if "CALL ANY" in text:
@@ -98,7 +105,7 @@ def get_call_value(image):
     elif "CHECK" in text:
         return 0
     elif "ALL IN" in text:
-        return 1000000  # TODO: GET ALL IN VALUE
+        return get_my_money(image)
     else:
         try:
             return convert_string_to_int(text.split(" ")[1])
@@ -200,10 +207,6 @@ def classify_card(image, position, algorithm="SIFT"):
             best_score = similarity_score
             best_img = template_img
 
-    cv.imshow(best_card, best_img)
-    cv.imshow("original", image)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
     return best_card, best_score
 
 
@@ -306,6 +309,8 @@ if __name__ == '__main__':
         key = cv.waitKey(10) & 0xFF
 
         if key == 32:
+            cv.imwrite("resources/slot_machine_continue.png", game_image)
+            print("img saved")
             players_number = get_number_of_players(game_image)
             print(f"Number of players: {players_number}")
 
@@ -326,11 +331,13 @@ if __name__ == '__main__':
             win_prob, lose_prob, tie_prob = simulation.monte_carlo([left_hand, right_hand], [flop1_card, flop2_card, flop3_card, turn_card, river_card], players_number, samples=50000)
             print(f"Simulation scores: {[win_prob, lose_prob, tie_prob]}")
 
+            my_money = get_my_money(game_image)
+            print(f"My money: {my_money}")
             pot_value = get_pot_value(game_image)
             print(f"Pot value: {pot_value}")
             call_value = get_call_value(game_image)
             print(f"Call Value: {call_value}")
 
-            expected_value = compute_ev(pot_value, call_value, win_prob, lose_prob)
-            print(f"Expected value:{expected_value:.1f}")
+            expected_value = compute_ev(pot_value, call_value, win_prob, lose_prob + tie_prob)
+            print(f"Expected value:{expected_value}")
             print(f"------------------------")
