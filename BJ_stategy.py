@@ -33,6 +33,9 @@ def get_blackjack_action(player_total, dealer_card, is_soft=False, is_pair=False
     - str: The recommended action ("Hit", "Stand", "Double", "Split", or "Surrender").
     """
 
+    if is_soft and is_pair:
+        return "Split"  # Pair of Aces
+
     # Hard hand strategy
     if not is_soft and not is_pair:
         if player_total <= 8:
@@ -96,8 +99,6 @@ def get_blackjack_action(player_total, dealer_card, is_soft=False, is_pair=False
             return "Stand"
         elif player_total == 20:  # Pair of 10s
             return "Stand"
-        elif player_total == 2:  # Pair of Aces (treated as 2 for total)
-            return "Split"
 
     # Soft hand strategy
     elif is_soft:
@@ -157,108 +158,118 @@ def left_click(window, coords):
 
 
 if __name__ == '__main__':
-    counter = 0
-    game_window = pygetwindow.getWindowsWithTitle('GOP3')[1]
+    counter = 1
+    game_window = pygetwindow.getWindowsWithTitle('GOP3')
 
+    game_window = game_window[1]
+
+    game_window.activate()
     game_window.resizeTo(game_size[0], game_size[1])
 
     while True:
+        try:
+            game_image = cv_functions.get_image(game_window)
 
-        game_image = cv_functions.get_image(game_window)
+            player_total_image = cv_functions.extract_image(game_image, player_card_value_position)
+            dealer_total_image = cv_functions.extract_image(game_image, dealer_card_value_position)
 
-        player_total_image = cv_functions.extract_image(game_image, player_card_value_position)
-        dealer_total_image = cv_functions.extract_image(game_image, dealer_card_value_position)
+            # check if AD is display. press X for afk prevention
+            if cv_functions.calculate_matchTemplate_similarity(game_image, x_ads_img) > 0.9:
+                # find img coords
+                top_left_x_ads_coords = cv_functions.calculate_matchTemplate_similarity(game_image, x_ads_img, get_similarity=False, get_coords=True)
+                top_left_x_ads_coords = (top_left_x_ads_coords[0] + 10, top_left_x_ads_coords[1] + 10)
+                left_click(game_window, top_left_x_ads_coords)
+                print(f"CLOSED AD")
 
-        # check if AD is display. press X for afk prevention
-        if cv_functions.calculate_matchTemplate_similarity(game_image, x_ads_img) > 0.9:
-            # find img coords
-            top_left_x_ads_coords = cv_functions.calculate_matchTemplate_similarity(game_image, x_ads_img, get_similarity=False, get_coords=True)
-            top_left_x_ads_coords = (top_left_x_ads_coords[0] + 10, top_left_x_ads_coords[1] + 10)
-            left_click(game_window, top_left_x_ads_coords)
-            print(f"CLOSED AD")
+            # check if set your bet is required and press amount
+            if cv_functions.calculate_matchTemplate_similarity(game_image, bj_set_your_bet_img) > 0.9:
+                left_click(game_window, double_button_coords)
 
-        # check if set your bet is required
-        if cv_functions.calculate_matchTemplate_similarity(game_image, bj_set_your_bet_img) > 0.9:
-            left_click(game_window, hit_button_coords)
-        # check if action required
-        elif cv_functions.calculate_matchTemplate_similarity(game_image, bj_hit_button_img) > 0.9:
+            # check if action required
+            elif cv_functions.calculate_matchTemplate_similarity(game_image, bj_hit_button_img) > 0.9:
 
-            # get dealer and player card value
-            player_total = get_value(player_total_image)
-            dealer_total = get_value(dealer_total_image)
+                # get dealer and player card value
+                player_total = get_value(player_total_image)
+                dealer_total = get_value(dealer_total_image)
 
-            print(f"Player Total: {player_total}")
-            print(f"Dealer Total: {dealer_total}")
+                print(f"Dealer Total: {dealer_total}")
+                print(f"Player Total: {player_total}")
 
-            if "MI" in dealer_total:
-                dealer_total = "1/11"
+                if "(6" in dealer_total:
+                    dealer_total = "10"
 
-            if player_total == "I1":
-                player_total = "11"
+                if "I/1" in dealer_total:
+                    dealer_total = "1/11"
 
-            if player_total == "I":
-                player_total = "10"
+                if player_total == "I1":
+                    player_total = "11"
 
-            # Errors
-            if not player_total.isdigit():
-                if player_total.count('/') == 1 and player_total.replace('/', '').isdigit():
-                    pass
-                else:
-                    cv.imwrite(f"ERROR_dealer_card{counter}.png", dealer_total_image)
-                    print(f"ERROR_dealer_card{counter}.png SAVED!")
-                    counter += 1
-                    # press stand for panik :D
+                if player_total == "I":
+                    player_total = "10"
+
+                # Errors
+                if not player_total.isdigit():
+                    if player_total.count('/') == 1 and player_total.replace('/', '').isdigit():
+                        pass
+                    else:
+                        cv.imwrite(f"errors/ERROR_player_card{counter}.png", dealer_total_image)
+                        print(f"ERROR_player_card{counter}.png SAVED!")
+                        counter += 1
+                        # press stand for panik :D
+                        left_click(game_window, hit_button_coords)
+                if not dealer_total.isdigit():
+                    if dealer_total.count('/') == 1 and dealer_total.replace('/', '').isdigit():
+                        pass
+                    else:
+                        cv.imwrite(f"errors/ERROR_dealer_card{counter}.png", player_total_image)
+                        print(f"ERROR_dealer_card{counter}.png SAVED!")
+
+                        counter += 1
+                        left_click(game_window, hit_button_coords)
+
+                # check if soft (Contains A and there is 1/11 or 2/22, etc)
+                is_soft = False
+                if player_total.count('/') == 1:
+                    is_soft = True
+                    player_total = player_total[-2:]
+
+                if dealer_total.count("/") == 1:
+                    dealer_total = dealer_total[-2:]
+
+                # check if split button exists
+                is_pair = False
+                if cv_functions.calculate_matchTemplate_similarity(game_image, bj_split_button_img) > 0.9:
+                    is_pair = True
+
+                player_total = int(player_total)
+                dealer_total = int(dealer_total)
+                print(f"Dealer Total: {dealer_total}")
+                print(f"Player Total: {player_total}")
+                print(f"is_pair: {is_pair}")
+                print(f"is_soft: {is_soft}")
+                # decision
+                decision = get_blackjack_action(int(player_total), int(dealer_total), is_soft=is_soft, is_pair=is_pair)
+                print(decision)
+
+                if decision == "Hit":
                     left_click(game_window, hit_button_coords)
-            if not dealer_total.isdigit():
-                if dealer_total.count('/') == 1 and dealer_total.replace('/', '').isdigit():
-                    pass
+                elif decision == "Stand":
+                    left_click(game_window, stand_button_coords)
+                elif decision == "Double":
+                    # check if double is possible (if there is a hit first, then it can't double anymore)
+                    if cv_functions.calculate_matchTemplate_similarity(game_image, bj_double_button_img) > 0.9:
+                        left_click(game_window, double_button_coords)
+                    else:
+                        left_click(game_window, hit_button_coords)
+                elif decision == "Split":
+                    left_click(game_window, stand_button_coords)
                 else:
-                    cv.imwrite(f"ERROR_player_card{counter}.png", player_total_image)
-                    print(f"ERROR_player_card{counter}.png SAVED!")
-
-                    counter += 1
-                    left_click(game_window, hit_button_coords)
-
-            # check if soft (Contains A and there is 1/11 or 2/22, etc)
-            is_soft = False
-            if player_total.count('/') == 1:
-                is_soft = True
-                player_total = player_total[-2:]
-
-            if dealer_total.count("/") == 1:
-                dealer_total = dealer_total[-2:]
-
-            # check if split button exists
-            is_pair = False
-            if cv_functions.calculate_matchTemplate_similarity(game_image, bj_split_button_img) > 0.9:
-                is_pair = True
-
-            player_total = int(player_total)
-            dealer_total = int(dealer_total)
-            print(f"Player Total: {player_total}")
-            print(f"Dealer Total: {dealer_total}")
-            print(f"is_pair: {is_pair}")
-            print(f"is_soft: {is_soft}")
-            # decision
-            decision = get_blackjack_action(int(player_total), int(dealer_total), is_soft=is_soft, is_pair=is_pair)
-            print(decision)
-
-            if decision == "Hit":
-                left_click(game_window, hit_button_coords)
-            elif decision == "Stand":
-                left_click(game_window, stand_button_coords)
-            elif decision == "Double":
-                # check if double is possible (if there is a hit first, then it can't double anymore)
-                if cv_functions.calculate_matchTemplate_similarity(game_image, bj_double_button_img) > 0.9:
-                    left_click(game_window, double_button_coords)
-                else:
-                    left_click(game_window, hit_button_coords)
-            elif decision == "Split":
-                left_click(game_window, stand_button_coords)
-            else:
-                print(f"No match!")
-            print("============")
-
+                    print(f"No match!")
+                print("============")
+        except Exception as e:
+            print(e)
+            # stand for panik
+            left_click(game_window, stand_button_coords)
         pydirectinput.moveTo(game_window.left, game_window.top)
         time.sleep(1.5)
 
