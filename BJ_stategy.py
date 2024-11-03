@@ -22,7 +22,7 @@ def get_blackjack_action(player_total, dealer_card, is_soft=False, is_pair=False
     Determines the next action in Blackjack based on the player's hand, the dealer's upcard, and the game rules.
 
     Parameters:
-    - player_total (int): The total value of the player's hand.
+    - player_total (int): The total value of the player's hand (adjusted to be the highest value under 21 for soft or split hands).
     - dealer_card (int): The dealer's visible card (2 through 11, where 11 represents an Ace).
     - is_soft (bool): Whether the hand is "soft" (contains an Ace that could be counted as 11).
     - is_pair (bool): Whether the player has a pair (two cards of the same rank).
@@ -62,6 +62,43 @@ def get_blackjack_action(player_total, dealer_card, is_soft=False, is_pair=False
         else:  # 17+
             return "Stand"
 
+    # Pair (split) strategy
+    elif is_pair:
+        if player_total == 4:  # Pair of 2s
+            if dealer_card in [2, 3, 4, 5, 6, 7]:
+                return "Split"
+            return "Hit"
+        elif player_total == 6:  # Pair of 3s
+            if dealer_card in [2, 3, 4, 5, 6, 7]:
+                return "Split"
+            return "Hit"
+        elif player_total == 8:  # Pair of 4s
+            if dealer_card in [5, 6]:
+                return "Split"
+            return "Hit"
+        elif player_total == 10:  # Pair of 5s
+            if dealer_card in [2, 3, 4, 5, 6, 7, 8, 9] and allow_double:
+                return "Double"
+            return "Hit"
+        elif player_total == 12:  # Pair of 6s
+            if dealer_card in [2, 3, 4, 5, 6]:
+                return "Split"
+            return "Hit"
+        elif player_total == 14:  # Pair of 7s
+            if dealer_card in [2, 3, 4, 5, 6, 7]:
+                return "Split"
+            return "Stand"
+        elif player_total == 16:  # Pair of 8s
+            return "Split"
+        elif player_total == 18:  # Pair of 9s
+            if dealer_card in [2, 3, 4, 5, 6, 8, 9]:
+                return "Split"
+            return "Stand"
+        elif player_total == 20:  # Pair of 10s
+            return "Stand"
+        elif player_total == 2:  # Pair of Aces (treated as 2 for total)
+            return "Split"
+
     # Soft hand strategy
     elif is_soft:
         if player_total == 13 or player_total == 14:
@@ -82,44 +119,20 @@ def get_blackjack_action(player_total, dealer_card, is_soft=False, is_pair=False
             elif dealer_card in [2, 7, 8]:
                 return "Stand"
             return "Hit"
-        else:  # 19+
+        elif player_total >= 19:  # 19+ for soft hands
             return "Stand"
 
-    # Pair (split) strategy
-    elif is_pair:
-        if player_total == 2 or player_total == 3:
-            if dealer_card in [2, 3, 4, 5, 6, 7]:
-                return "Split"
-            return "Hit"
-        elif player_total == 4:
-            if dealer_card in [5, 6]:
-                return "Split"
-            return "Hit"
-        elif player_total == 6:
-            if dealer_card in [2, 3, 4, 5, 6]:
-                return "Split"
-            return "Hit"
-        elif player_total == 7:
-            if dealer_card in [2, 3, 4, 5, 6, 7]:
-                return "Split"
-            return "Stand"
-        elif player_total == 8:
-            return "Split"
-        elif player_total == 9:
-            if dealer_card in [2, 3, 4, 5, 6, 8, 9]:
-                return "Split"
-            return "Stand"
-        elif player_total == 11:  # A,A
-            return "Split"
-        else:  # 10,10
-            return "Stand"
+    # Default action in case of an unexpected input
+    return "Stand"
+
+
 
 
 # Example usage
 # action = get_blackjack_action(player_total=16, dealer_card=10, is_soft=False, is_pair=False)
 # print(f"Recommended action: {action}")
 
-reader = easyocr.Reader(['en'])
+reader = easyocr.Reader(['en'], gpu=True)
 bj_hit_button_img = cv.imread("./resources/bj_hit_button.png", cv.IMREAD_UNCHANGED)
 bj_split_button_img = cv.imread("./resources/bj_split_button.png", cv.IMREAD_UNCHANGED)
 bj_double_button_img = cv.imread("./resources/bj_double_button.png", cv.IMREAD_UNCHANGED)
