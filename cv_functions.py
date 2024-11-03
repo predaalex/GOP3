@@ -132,14 +132,17 @@ def extract_image(image, coords):
     return image[coords[0][1]:coords[1][1], coords[0][0]:coords[1][0]]
 
 
-def calculate_matchTemplate_similarity(image, template_img):
+def calculate_matchTemplate_similarity(image, template_img, get_similarity=True, get_coords=False):
     """
     Calculates the similarity between the template image and the image
     """
     result = cv.matchTemplate(image, template_img, cv.TM_CCOEFF_NORMED)
     min_val, max_val, min_loc, max_loc = cv.minMaxLoc(result)
-    return max_val
 
+    if get_similarity:
+        return max_val
+    if get_coords:
+        return max_loc  # min_loc left top corner
 
 def calculate_sift_similarity(image1, image2):
     """
@@ -309,7 +312,6 @@ if __name__ == '__main__':
         key = cv.waitKey(10) & 0xFF
 
         if key == 32:
-            cv.imwrite("resources/slot_machine_continue.png", game_image)
             print("img saved")
             players_number = get_number_of_players(game_image)
             print(f"Number of players: {players_number}")
