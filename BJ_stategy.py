@@ -1,4 +1,6 @@
+import builtins
 import time
+from datetime import datetime
 
 import cv2
 
@@ -10,6 +12,8 @@ import pydirectinput
 
 dealer_card_value_position = [(770, 230), (850, 280)]
 player_card_value_position = [(770, 620), (850, 670)]
+right_split_value_position = [(886, 625), (963, 667)]
+left_split_value_position = [(648, 625), (727, 667)]
 game_size = [1624, 942]
 hit_button_coords = [588, 875]
 stand_button_coords = [811, 874]
@@ -141,6 +145,11 @@ bj_set_your_bet_img = cv.imread("./resources/bj_set_your_bets_text.png", cv.IMRE
 x_ads_img = cv.imread("./resources/X_ADs.png", cv.IMREAD_UNCHANGED)
 
 
+def print(*args, **kwargs):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    builtins.print(f"[{timestamp}] ", *args, **kwargs)
+
+
 def get_value(image):
     scale_factor = 3
     upscaled = cv.resize(image, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_LINEAR)
@@ -155,6 +164,76 @@ def get_value(image):
 def left_click(window, coords):
     x, y = coords
     pydirectinput.click(window.left + x, window.top + y)
+
+
+def fix_extracted_cards_value(cards_value):
+
+    if "(6" in cards_value:
+        cards_value = "10"
+    if "I/1" in cards_value:
+        cards_value = "1/11"
+
+    if "74" == cards_value:
+        cards_value = "4"
+    if "66" == cards_value:
+        cards_value = "6"
+
+    if cards_value == "I1":
+        cards_value = "11"
+    if cards_value == "I":
+        cards_value = "10"
+
+    return cards_value
+
+
+def make_splitted_actions(game_window, cards_position, dealer_total, counter=0):
+
+    while True:
+        # get curr img
+        game_image = cv_functions.get_image(game_window)
+        hand_img = cv_functions.extract_image(game_image, cards_position)
+
+        hand_value = get_value(hand_img)
+        hand_value = fix_extracted_cards_value(hand_value)
+
+        # Errors
+        if not hand_value.isdigit():
+            if hand_value.count('/') == 1 and hand_value.replace('/', '').isdigit():
+                pass
+            else:
+                cv.imwrite(f"errors/ERROR_player_split_card{counter}.png", dealer_total_image)
+                print(f"ERROR_player_split_card{counter}.png SAVED!")
+                counter += 1
+                # press stand for panik :D
+                left_click(game_window, hit_button_coords)
+
+        is_soft = False
+        if hand_value.count('/') == 1:
+            is_soft = True
+            hand_value = hand_value[-2:]
+
+        hand_value = int(hand_value)
+        allow_double = cv_functions.calculate_matchTemplate_similarity(game_image, bj_double_button_img) > 0.9
+        print(f"Player right/left hand total: {hand_value}")
+        if hand_value > 20:
+            print(f"Stop this hand, value > 20")
+            break
+        print(f"is_soft: {is_soft}")
+
+        decision = get_blackjack_action(hand_value, dealer_total, is_soft=is_soft, is_pair=False,
+                                        allow_double=allow_double)
+        print(decision)
+
+        if decision == "Stand":
+            left_click(game_window, stand_button_coords)
+            break
+        elif decision == "Double":
+            left_click(game_window, double_button_coords)
+            break
+        else:  # hit
+            left_click(game_window, hit_button_coords)
+
+        time.sleep(3)
 
 
 if __name__ == '__main__':
@@ -195,17 +274,8 @@ if __name__ == '__main__':
                 print(f"Dealer Total: {dealer_total}")
                 print(f"Player Total: {player_total}")
 
-                if "(6" in dealer_total:
-                    dealer_total = "10"
-
-                if "I/1" in dealer_total:
-                    dealer_total = "1/11"
-
-                if player_total == "I1":
-                    player_total = "11"
-
-                if player_total == "I":
-                    player_total = "10"
+                player_total = fix_extracted_cards_value(player_total)
+                dealer_total = fix_extracted_cards_value(dealer_total)
 
                 # Errors
                 if not player_total.isdigit():
@@ -248,7 +318,7 @@ if __name__ == '__main__':
                 print(f"is_pair: {is_pair}")
                 print(f"is_soft: {is_soft}")
                 # decision
-                decision = get_blackjack_action(int(player_total), int(dealer_total), is_soft=is_soft, is_pair=is_pair)
+                decision = get_blackjack_action(player_total, dealer_total, is_soft=is_soft, is_pair=is_pair)
                 print(decision)
 
                 if decision == "Hit":
@@ -262,7 +332,17 @@ if __name__ == '__main__':
                     else:
                         left_click(game_window, hit_button_coords)
                 elif decision == "Split":
-                    left_click(game_window, stand_button_coords)
+                    left_click(game_window, split_button_coords)
+                    time.sleep(1)  # wait to split
+
+                    print(f"------")
+                    print(f"Right hand")
+                    make_splitted_actions(game_window, right_split_value_position, dealer_total, counter)
+
+                    print(f"------")
+                    print(f"Left Hand")
+                    make_splitted_actions(game_window, left_split_value_position, dealer_total, counter)
+
                 else:
                     print(f"No match!")
                 print("============")
