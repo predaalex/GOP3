@@ -201,7 +201,7 @@ def make_splitted_actions(game_window, cards_position, dealer_total, counter=0):
             if hand_value.count('/') == 1 and hand_value.replace('/', '').isdigit():
                 pass
             else:
-                cv.imwrite(f"errors/ERROR_player_split_card{counter}.png", dealer_total_image)
+                cv.imwrite(f"errors/ERROR_hand_split_card{counter}.png", hand_img)
                 print(f"ERROR_player_split_card{counter}.png SAVED!")
                 counter += 1
                 # press stand for panik :D
@@ -240,7 +240,7 @@ if __name__ == '__main__':
     counter = 1
     game_window = pygetwindow.getWindowsWithTitle('GOP3')
 
-    game_window = game_window[1]
+    game_window = game_window[0]
 
     game_window.activate()
     game_window.resizeTo(game_size[0], game_size[1])
@@ -282,7 +282,7 @@ if __name__ == '__main__':
                     if player_total.count('/') == 1 and player_total.replace('/', '').isdigit():
                         pass
                     else:
-                        cv.imwrite(f"errors/ERROR_player_card{counter}.png", dealer_total_image)
+                        cv.imwrite(f"errors/ERROR_player_card{counter}.png", player_total_image)
                         print(f"ERROR_player_card{counter}.png SAVED!")
                         counter += 1
                         # press stand for panik :D
@@ -291,7 +291,7 @@ if __name__ == '__main__':
                     if dealer_total.count('/') == 1 and dealer_total.replace('/', '').isdigit():
                         pass
                     else:
-                        cv.imwrite(f"errors/ERROR_dealer_card{counter}.png", player_total_image)
+                        cv.imwrite(f"errors/ERROR_dealer_card{counter}.png", dealer_total_image)
                         print(f"ERROR_dealer_card{counter}.png SAVED!")
 
                         counter += 1
