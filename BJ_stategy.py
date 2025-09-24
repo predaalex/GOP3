@@ -1,4 +1,5 @@
 import builtins
+import random
 import time
 from datetime import datetime
 
@@ -161,8 +162,11 @@ def get_value(image):
     return text[0]
 
 
-def left_click(window, coords):
+def left_click(window, coords, fitter=True):
     x, y = coords
+    if fitter:
+        x += random.randrange(-15, 15)
+        y += random.randrange(-15, 15)
     pydirectinput.click(window.left + x, window.top + y)
 
 
@@ -240,7 +244,7 @@ if __name__ == '__main__':
     counter = 1
     game_window = pygetwindow.getWindowsWithTitle('GOP3')
 
-    game_window = game_window[0]
+    game_window = game_window[1]
 
     game_window.activate()
     game_window.resizeTo(game_size[0], game_size[1])

@@ -1,3 +1,5 @@
+import random
+
 import cv_functions
 import cv2 as cv
 import time
@@ -16,13 +18,16 @@ start_img = cv_functions.extract_image(cv.imread(r"resources/slot_machine_start.
 game_window = pygetwindow.getWindowsWithTitle('GOP3')[1]
 
 
-def left_click(window, coords):
+def left_click(window, coords, fitter=True):
     x, y = coords
+    if fitter:
+        x += random.randrange(-5, 5)
+        y += random.randrange(-5, 5)
     pydirectinput.click(window.left + x, window.top + y)
 
 
 def check_buttons(game_img, threshold=0.9):
-    cv.imshow("check_buttons", game_img)
+    # cv.imshow("check_buttons", game_img)
 
     # check if collect/start/continue button exists
     collect_similarity = cv_functions.calculate_matchTemplate_similarity(game_img, collect_img)

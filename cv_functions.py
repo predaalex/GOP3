@@ -23,7 +23,7 @@ opponents_cards_coords = [
 ]
 call_button_coords = [(766, 847), (1100, 915)]
 my_money_coords = [(919, 727), (1030, 765)]
-pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+pytesseract.pytesseract.tesseract_cmd = r"C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe"
 counter = 0
 
 
@@ -257,12 +257,12 @@ def classify_card_v2(image, position):
 
     # 1. get value
     value = get_card_value_or_rank(image, position, "value/")
-    key = get_card_value_or_rank(image, position, "rank/")
+    rank = get_card_value_or_rank(image, position, "rank/")
 
-    if key is None or value is None:
+    if rank is None or value is None:
         return None
 
-    return value, key
+    return value, rank
 
 
 def get_number_of_players(image):
