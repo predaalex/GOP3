@@ -15,7 +15,7 @@ collect_img = cv_functions.extract_image(cv.imread(r"resources/slot_machine_coll
 continue_img = cv_functions.extract_image(cv.imread(r"resources/slot_machine_continue.png", cv.IMREAD_GRAYSCALE), button_coords)
 start_img = cv_functions.extract_image(cv.imread(r"resources/slot_machine_start.png", cv.IMREAD_GRAYSCALE), button_coords)
 
-game_window = pygetwindow.getWindowsWithTitle('GOP3')[1]
+game_window = pygetwindow.getWindowsWithTitle('GOP3')[0]
 
 
 def left_click(window, coords, fitter=True):

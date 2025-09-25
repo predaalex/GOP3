@@ -75,6 +75,7 @@ def get_pot_value(image):
     """
     # get pot image
     pot_image = extract_image(image, pot_coords)
+    cv.imshow("pot_image", pot_image)
     text = image_to_text(pot_image, thresh_function=cv.THRESH_BINARY_INV)
 
     # text to int
@@ -85,6 +86,19 @@ def get_pot_value(image):
 
 def get_my_money(image):
     my_money_img = extract_image(image, my_money_coords)
+    my_money_img = cv.resize(my_money_img, dsize=(0, 0), fx=3, fy=3)
+    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+    # Sharpen the image
+    my_money_img = cv.filter2D(my_money_img, -1, kernel)
+
+    # black outside coords
+    h, w = my_money_img.shape[:2]
+    mask = np.zeros((h, w), dtype=np.uint8)  # 1 channel mask, all zeros
+    mask[15:87, 15:] = 255  # region you want to keep
+
+    # If original image is grayscale:
+    my_money_img = cv.bitwise_and(my_money_img, my_money_img, mask=mask)
+    cv.imshow("my_money", my_money_img)
     text = image_to_text(my_money_img, thresh_function=cv.THRESH_BINARY_INV)
     my_money = convert_string_to_int(text)
     return my_money
@@ -110,6 +124,7 @@ def get_call_value(image):
         try:
             return convert_string_to_int(text.split(" ")[1])
         except Exception as e:
+            print(f"could not convert call value")
             return 0
 
 
@@ -265,7 +280,7 @@ def classify_card_v2(image, position):
     return value, rank
 
 
-def get_number_of_players(image):
+def get_number_of_opponents(image):
     """
     Returns the number of players still playing the game.
     :param image:
@@ -286,16 +301,263 @@ def get_number_of_players(image):
 
 def compute_ev(pot_value, call_value, win_prob, lose_prob):
     """
-    (probabilitatea de a castiga * cat castigi)
+    Your original EV-of-calling formula (lose_prob may include ties).
+    Interprets:
+      pot_value = pot before your action
+      call_value = amount you must invest to call
     """
     if None in (pot_value, call_value, win_prob, lose_prob):
         return None
+    pot_if_call = pot_value + call_value
+    return (win_prob * pot_if_call) - (lose_prob * call_value)
 
-    return (win_prob * pot_value) - (lose_prob * call_value)
+
+import math
+from functools import lru_cache
+
+def sigmoid(x):
+    return 1.0 / (1.0 + math.exp(-x))
+
+def binom_pmf(n, k, p):
+    # Simple binomial PMF
+    if k < 0 or k > n: return 0.0
+    if p <= 0: return 1.0 if k == 0 else 0.0
+    if p >= 1: return 1.0 if k == n else 0.0
+    # nCk
+    from math import comb
+    return comb(n, k) * (p ** k) * ((1 - p) ** (n - k))
+
+def clamp(x, lo, hi):
+    return max(lo, min(hi, x))
+
+def logistic_continue_prob(R):
+    # Less fold-happy: at R=0, ~45% continue; at R=5000, ~27% continue
+    a, b = -0.2, -0.0002
+    return 1.0 / (1.0 + math.exp(-(a + b*float(R))))
+
+def decide_action_pro(
+    # State
+    hand, board, opponents, pot_value, call_value,
+    # Betting constraints
+    min_raise=0, max_raise=0,
+    hero_stack=None, opp_stack=None,  # effective stacks in front of you now
+    # Equity model
+    get_equity=None,    # function k -> (win_prob, tie_prob); if None, uses simulation.monte_carlo
+    equity_samples=20000,
+    # Opponent response model
+    continue_prob_fn=logistic_continue_prob,  # maps R -> per-opponent continue prob
+    # Rake
+    rake_percent=0.0, rake_cap=None,
+    # Your simulation module (for default equity)
+    simulation_module=None,
+):
+    """
+    Returns: dict with
+      {
+        'best_action': "fold"|"check"|"call"|"raise",
+        'amount': 0 or raise size (over-the-call),
+        'ev': best EV,
+        'ev_call': EV(call),
+        'details': {... breakdown ...}
+      }
+    Assumptions:
+      - pot_value is the pot BEFORE your action.
+      - call_value is what you must put in to call.
+      - When you RAISE by R over the call:
+          • You invest call_value + R (capped by hero_stack).
+          • Each opponent independently continues with prob p(R).
+          • If k opponents continue, each invests up to min(R, opp_stack).
+      - If ALL fold (k=0), you win the current pot (no rake).
+      - If k>=1, the hand “goes to showdown” now (rake applies) and equity vs k is used.
+    """
+
+    # ---- sanity / caps ----
+    opponents = max(0, int(opponents))
+    hero_stack = float('inf') if hero_stack is None else float(max(0, hero_stack))
+    opp_stack  = float('inf') if opp_stack  is None else float(max(0, opp_stack))
+
+    # Cap call and raises by stack
+    max_affordable_raise = max(0, hero_stack - call_value)
+    if max_raise <= 0:
+        max_raise = 0
+    if min_raise < 0:
+        min_raise = 0
+    # respect stack cap
+    max_raise = min(max_raise, max_affordable_raise)
+
+    # --- Open-raise sanity when there's nothing to call ---
+    if call_value == 0:
+        # Allow at most a standard open (~pot or 4x table min)
+        max_raise = min(max_raise, pot_value, 4 * max(1, min_raise))
+
+    # ---- default equity function (uses your simulation) ----
+    if get_equity is None:
+        if simulation_module is None:
+            raise ValueError("Provide simulation_module or a get_equity(k) function.")
+        @lru_cache(None)
+        def _equity(k):
+            # k = number of opponents that continue
+            if k <= 0:
+                return (1.0, 0.0)  # trivial: if no caller, you win pot uncontested
+            win, lose, tie = simulation_module.monte_carlo(hand, board, opponents=k, samples=equity_samples)
+            print(f"Simulation: {[win,lose,tie]}")
+            # return (win, tie)
+            return (win, tie)
+        get_equity = _equity
+    else:
+        # cache user-supplied function too
+        get_equity = lru_cache(None)(get_equity)
+
+    # ---- EV helpers ----
+    def apply_rake(pot_total):
+        if rake_percent <= 0:
+            return 0.0
+        rake = pot_total * rake_percent
+        if rake_cap is not None:
+            rake = min(rake, rake_cap)
+        return rake
+
+    # EV of checking / calling
+    def ev_call_option():
+        if call_value == 0:
+            # Pure check: no money goes in, pot stays; no one folds by assumption.
+            # We go to next street/showdown only if that’s your model; here, treat as call of 0 with 1+ opponents “continuing”.
+            # Use current opponents count to get equity.
+            k = max(1, opponents)  # avoid trivial k=0 on a check
+            win, tie = get_equity(k)
+            pot_sd = pot_value  # no chips added
+            rake = apply_rake(pot_sd)
+            # Net: win*(pot - rake) + tie*0.5*(pot - rake) - lose*0
+            lose = max(0.0, 1.0 - win - tie)
+            return win*(pot_sd - rake) + tie*0.5*(pot_sd - rake) - lose*0.0
+        else:
+            # Call: you invest call_value; assume no extra cold-callers (keep simple).
+            # If you want cold-callers, model with a small p at R=0 and use binomial like the raise branch.
+            k = max(1, opponents)
+            win, tie = get_equity(k)
+            lose = max(0.0, 1.0 - win - tie)
+            pot_sd = pot_value + call_value + k*0.0  # only you add chips with a call in this simple branch
+            # If you want others to also call current bet, add k*call_value above.
+            rake = apply_rake(pot_sd)
+            return win*(pot_sd - rake) + tie*0.5*(pot_sd - rake) - lose*call_value
+
+    # EV of a raise by R (over-the-call)
+    def ev_raise_option(R):
+        R = clamp(R, 0, max_raise)
+        if R <= 0:
+            return float('-inf')  # not a real raise
+        # Opponent per-head continue prob for this R
+        p_cont = clamp(continue_prob_fn(R), 0.0, 1.0)
+
+        ev = 0.0
+        # distribution of k callers among 'opponents'
+        for k in range(0, opponents + 1):
+            pk = binom_pmf(opponents, k, p_cont)
+            if pk == 0.0:
+                continue
+
+            if k == 0:
+                # Everyone folds: you win the pot; your bet comes back; no rake (typical).
+                ev += pk * (pot_value)
+                continue
+
+            # At least one caller: showdown now.
+            # Each caller can only call up to opp_stack, you can only invest up to hero_stack
+            hero_invest = clamp(call_value + R, 0, hero_stack)
+            caller_each = clamp(R, 0, opp_stack)
+            total_callers_contrib = k * caller_each
+
+            pot_sd = pot_value + hero_invest + total_callers_contrib
+            rake = apply_rake(pot_sd)
+
+            win, tie = get_equity(k)
+            lose = max(0.0, 1.0 - win - tie)
+
+            ev_k = win*(pot_sd - rake) + tie*0.5*(pot_sd - rake) - lose*hero_invest
+            ev += pk * ev_k
+
+        return ev
+
+    # ---- Evaluate actions ----
+    # ---- Evaluate actions ----
+    out_details = {}
+
+    ev_call = ev_call_option()
+    out_details['call' if call_value > 0 else 'check'] = ev_call
+
+    best_action, best_amount, best_ev = ("check" if call_value == 0 else "call", 0, ev_call)
+
+    # Gate: in open spots with many opponents, don't consider raises with trash equity
+    allow_raises = True
+    if call_value == 0 and opponents >= 3:
+        equity_gate = 1.0 / (opponents + 1.5)  # e.g., vs 4 opp -> ~18.2%
+        # Get equity for a typical called pot size (>=1 caller).
+        # Use your sim for k = max(1, opponents) — cached in get_equity
+        win_gate, tie_gate = get_equity(max(1, opponents))
+        if win_gate < equity_gate:
+            allow_raises = False
+
+    # Scan raises only if allowed and sizes exist
+    if allow_raises and min_raise > 0 and max_raise >= min_raise:
+        R = min_raise
+        seen = set()
+        while R <= max_raise + 1e-9:
+            Rr = round(R)
+            if Rr not in seen:
+                # Use the conservative continue prob
+                def cont_prob_fn_wrapped(r):
+                    return conservative_continue_prob(r, opponents)
+
+                # Temporarily wrap the per-R continue prob
+                p_cont = cont_prob_fn_wrapped(Rr)
+
+                # Compute EV at this R using the existing ev_raise_option,
+                # but feed the p_cont directly by briefly shadowing the fn:
+                saved_fn = continue_prob_fn
+                try:
+                    # monkey-patch the closure variable used by ev_raise_option
+                    def local_cp(_R, _pc=p_cont):
+                        return _pc
+
+                    # replace continue_prob_fn for this R
+                    continue_prob_fn = local_cp  # type: ignore
+                    evR = ev_raise_option(Rr)
+                finally:
+                    continue_prob_fn = saved_fn  # restore
+
+                out_details[f'raise_{Rr}'] = evR
+                if evR > best_ev:
+                    best_action, best_amount, best_ev = ("raise", Rr, evR)
+                seen.add(Rr)
+            R += min_raise
+
+    # Compare to fold if calling costs chips
+    if call_value > 0 and best_ev <= 0.0:
+        return {'best_action': 'fold', 'amount': 0, 'ev': 0.0, 'ev_call': ev_call, 'details': out_details}
+
+    return {'best_action': best_action, 'amount': best_amount, 'ev': best_ev, 'ev_call': ev_call,
+            'details': out_details}
+
+
+def conservative_continue_prob(R, opponents):
+    """
+    Per-opponent continue probability vs raise size R (over-the-call).
+    - Base logistic that drops with R.
+    - With a floor that *increases* with number of opponents so multiway folds are rarer.
+    """
+    # Logistic: tune to your pool
+    a, b = -0.2, -0.0002  # softer than before
+    base = 1.0 / (1.0 + math.exp(-(a + b*float(R))))
+
+    # Floor: at least some continue chance multiway.
+    # Heads-up floor ~ 0.18, 3-4way ~ 0.28–0.32
+    p_floor = 0.18 + 0.03 * max(0, opponents - 1)
+    p_floor = min(p_floor, 0.32)
+    return max(base, p_floor)
 
 
 if __name__ == '__main__':
-    game_window = pygetwindow.getWindowsWithTitle('GOP3')[1]
+    game_window = pygetwindow.getWindowsWithTitle('GOP3')[0]
 
     while True:
 
@@ -312,9 +574,9 @@ if __name__ == '__main__':
         key = cv.waitKey(10) & 0xFF
 
         if key == 32:
-            print("img saved")
-            players_number = get_number_of_players(game_image)
-            print(f"Number of players: {players_number}")
+            # print("img saved")
+            opponents = get_number_of_opponents(game_image)
+            print(f"Number of opponents: {opponents}")
 
             left_hand = "".join(card for card in (classify_card_v2(left_card_image, 'left') or []) if card is not None)
             right_hand = "".join(card for card in (classify_card_v2(right_card_image, 'right') or []) if card is not None)
@@ -323,23 +585,58 @@ if __name__ == '__main__':
             flop3_card = "".join(card for card in (classify_card_v2(flop3_card_image, 'flop') or []) if card is not None)
             turn_card = "".join(card for card in (classify_card_v2(turn_card_image, 'flop') or []) if card is not None)
             river_card = "".join(card for card in (classify_card_v2(river_card_image, 'flop') or []) if card is not None)
-            print(f"Player Cards: {left_hand}{right_hand}")
+            print(f"Player Cards: {left_hand}-{right_hand}")
             print(f"Flop1 cards: {flop1_card}")
             print(f"Flop2 cards: {flop2_card}")
             print(f"Flop3 cards: {flop3_card}")
             print(f"Turn cards: {turn_card}")
             print(f"River cards: {river_card}")
-
-            win_prob, lose_prob, tie_prob = simulation.monte_carlo([left_hand, right_hand], [flop1_card, flop2_card, flop3_card, turn_card, river_card], players_number, samples=50000)
-            print(f"Simulation scores: {[win_prob, lose_prob, tie_prob]}")
+            #
+            # win_prob, lose_prob, tie_prob = simulation.monte_carlo([left_hand, right_hand], [flop1_card, flop2_card, flop3_card, turn_card, river_card], opponents, samples=50000)
+            # print(f"Simulation scores: {[win_prob, lose_prob, tie_prob]}")
 
             my_money = get_my_money(game_image)
+            if my_money is None:
+                my_money = 5000
             print(f"My money: {my_money}")
             pot_value = get_pot_value(game_image)
             print(f"Pot value: {pot_value}")
             call_value = get_call_value(game_image)
             print(f"Call Value: {call_value}")
 
-            expected_value = compute_ev(pot_value, call_value, win_prob, lose_prob + tie_prob)
-            print(f"Expected value:{expected_value}")
-            print(f"------------------------")
+            # expected_value = compute_ev(pot_value, call_value, win_prob, lose_prob + tie_prob)
+            # print(f"EV(call) = {expected_value:.2f}")
+
+
+            # After you have: hand, board, opponents, pot_value, call_value, my_money (hero stack), table_min_call, etc.
+
+            # Effective stacks LEFT TO INVEST this street
+            hero_stack_left = max(0, my_money)  # or your tracked stack
+            opp_stack_left = 10_000_000  # if you don't know, set big; or detect
+
+            result = decide_action_pro(
+                hand=[left_hand, right_hand],
+                board=[flop1_card, flop2_card, flop3_card, turn_card, river_card],
+                opponents=opponents,
+                pot_value=pot_value,
+                call_value=call_value,  # 0 here → open spot
+                min_raise=500,
+                max_raise=5000,  # will be capped inside when call_value==0
+                hero_stack=my_money,
+                opp_stack=None,  # unknown → uncapped by opp
+                simulation_module=simulation,
+                equity_samples=50000,
+                continue_prob_fn=conservative_continue_prob,  # the tamer curve above
+                rake_percent=0.0,  # set if applicable
+                rake_cap=None
+            )
+
+            print(f"EV(call/check) = {result['ev_call']:.2f}")
+            if result['best_action'] == "raise":
+                print(f"Best: RAISE {result['amount']} | EV = {result['ev']:.2f}")
+            else:
+                print(f"Best: {result['best_action'].upper()} | EV = {result['ev']:.2f}")
+
+            print("------------------------")
+
+

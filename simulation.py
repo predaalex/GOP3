@@ -1,73 +1,59 @@
 from phevaluator import evaluate_cards
 import random
-import time
 
-suits = ['d', 's', 'c', 'h']  # diamonds, spades, clubs, hearths
-ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K']
-cards = []
+SUITS = ['d', 's', 'c', 'h']  # diamonds, spades, clubs, hearts
+RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K']
+DECK_ALL = [r + s for r in RANKS for s in SUITS]
 
-start = time.time()
-for r in ranks:
-    for s in suits:
-        cards.append(r + s)
-
-
-def simulate(hand, table, players):
-    hands = []
-    deck = random.sample(cards, len(cards))  # shuffle the deck
+def simulate(hand, table, opponents):
+    # Make local copies
     hand = hand[:]
-    table = table[:]
+    table = [c for c in table if c]  # strip empty strings if any
 
-    full = table + hand
-    deck = list(filter(lambda x: x not in full, deck))
+    # Build a fresh deck and remove known cards
+    used = set(hand) | set(table)
+    deck = [c for c in DECK_ALL if c not in used]
+    random.shuffle(deck)
 
-    # deal cards to players
-    for i in range(players):
-        hn = [deck.pop(0), deck.pop(0)]
-        hands.append(hn)
+    # Deal opponents (2 cards each)
+    opp_hands = [[deck.pop(), deck.pop()] for _ in range(opponents)]
 
-    # flop, turn, river
+    # Complete the board to 5
     while len(table) < 5:
-        card = deck.pop(0)
-        table.append(card)
-        full.append(card)
-    my_hand_rank = evaluate_cards(full[0], full[1], full[2], full[3], full[4], full[5], full[6])
+        table.append(deck.pop())
 
-    best_opponent_hand = 100000
-    for check_hand in hands:
-        all_cards = table + check_hand
-        curr_opponent = evaluate_cards(all_cards[0], all_cards[1], all_cards[2], all_cards[3], all_cards[4], all_cards[5], all_cards[6])
-        if curr_opponent < best_opponent_hand:
-            best_opponent_hand = curr_opponent
+    # Evaluate hero
+    my_rank = evaluate_cards(*(table + hand))  # 7 cards exactly
 
-    # from the definition of the library we use for hand evaluation, larger evaluations correspond to less strong hands
-    # so, the game is won by the player with the smallest hand evaluation
-    if best_opponent_hand < my_hand_rank:
-        return 1  # 'LOSE'
-    if best_opponent_hand == my_hand_rank:
-        return 2  # 'SPLIT'
-    return 0  # 'WIN'
+    # Evaluate best opponent
+    best_opp = min(
+        evaluate_cards(*(table + oh))
+        for oh in opp_hands
+    )
 
+    # Return 0=WIN, 1=LOSE, 2=SPLIT
+    if best_opp < my_rank:
+        return 1
+    if best_opp == my_rank:
+        return 2
+    return 0
 
-def monte_carlo(hand, table, players=2, samples=100000):
+def monte_carlo(hand, table, opponents=1, samples=100_000):
     """
-    Monte Carlo simulation
-    :param hand: player cards
-    :param table: community cards
-    :param players: number of opponents
-    :param samples: number of simulations
-    :return: percentages of win | lose | tie
+    Monte Carlo simulation:
+    :param hand: list like ['Ad','Qc']
+    :param table: list of 0..5 community cards, e.g. ['7s','Ks'] or []
+    :param opponents: number of opposing players
+    :param samples: number of trials
+    :return: [win_pct, lose_pct, tie_pct]
     """
-    result = [0, 0, 0]
-    table = [card for card in table if card != '']
-    for i in range(samples):
-        outcome = simulate(hand, table, players)
-        try:
-            result[outcome] += 1
-        except Exception as e:
-            print(outcome)
-    return list(map(lambda x: x / samples, result))
-
+    counts = [0, 0, 0]
+    for _ in range(samples):
+        outcome = simulate(hand, table, opponents)
+        counts[outcome] += 1
+    total = float(samples)
+    return [c / total for c in counts]
 
 if __name__ == '__main__':
-    print(monte_carlo(['Ad', 'Qc'], []))
+    # Example: hero 7c Qc, full board known, 3 opponents
+    print(monte_carlo(['7c', 'Qc'], ['7s','Ks','9c','6c','Kc'], opponents=3, samples=100_000))

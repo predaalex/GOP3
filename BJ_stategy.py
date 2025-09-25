@@ -244,7 +244,7 @@ if __name__ == '__main__':
     counter = 1
     game_window = pygetwindow.getWindowsWithTitle('GOP3')
 
-    game_window = game_window[1]
+    game_window = game_window[0]
 
     game_window.activate()
     game_window.resizeTo(game_size[0], game_size[1])
